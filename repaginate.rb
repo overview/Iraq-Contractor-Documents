@@ -7,6 +7,7 @@
 require 'amatch'
 require 'CSV'
 require 'Set'
+require 'Digest'
 include Amatch
 
 
@@ -169,19 +170,29 @@ end
 
 # ------------------ Loop through all pages -------------- 
 
+# little helper function to write a doc in correct format: "text, uid, doctype, numpages, url"
+# creates UID by hashing URL
+@docs_written = 0
+def write_doc(csvfile, reader, doctype, urlbase)
+  urlstring = urlbase + reader.doc_start_page().to_s
+  uidstring = Digest::MD5.hexdigest(urlstring)
+  csvfile << [ reader.doc_content(), uidstring, doctype, reader.pages_in_doc(), urlstring ]    # write doc
+  @docs_written += 1
+  puts "Writing document type #{doctype}. Start #{reader.doc_start_page}, pages #{reader.pages_in_doc}"
+end
+
 reader = PagedReader.new(pagefile_prefix, 1)
 if !reader.more_pages?
   puts("Can't open file #{pagefilename}, aborting.")
   Process.exit()
 end
 
-docs_written = 0
 last_pagetype = nil
 
 CSV.open(outfile_name, "w") do |f|
   
   # write header
-  f << ["text","type","pages","url"]
+  f << ["text","uid","type","pages","url"]
   
   # loop until out of pages
   while reader.more_pages?
@@ -206,9 +217,7 @@ CSV.open(outfile_name, "w") do |f|
     if coverpage_types.include?(pagetype) || (pagetype != nil && (pagetype != last_pagetype))
 
       if reader.pages_in_doc() > 0
-        f << [ reader.doc_content(), last_pagetype, reader.pages_in_doc(), urlbase + reader.doc_start_page().to_s]    # write doc
-        docs_written += 1
-        puts "Writing document type #{last_pagetype}. Start #{reader.doc_start_page}, pages #{reader.pages_in_doc}"
+        write_doc(f, reader, last_pagetype, urlbase)
       end
 
       reader.new_doc()
@@ -224,9 +233,7 @@ CSV.open(outfile_name, "w") do |f|
       page_content.each do |line|
         if line.scan("//END//") != [] then
 
-          f << [ reader.doc_content(), "Blackwater", reader.pages_in_doc(), urlbase + reader.doc_start_page().to_s]    # write doc
-          docs_written += 1
-          puts "Writing document type Blackwater. Start #{reader.doc_start_page}, pages #{reader.pages_in_doc}"
+          write_doc(f, reader, "Blackwater", urlbase)
 
           reader.new_doc()
           last_pagetype = pagetype            
@@ -240,11 +247,9 @@ CSV.open(outfile_name, "w") do |f|
   
   # no more pages = flush out current document (we know we've got at least one page or we would have exited, above)
   if reader.pages_in_doc() > 0
-    f << [ reader.doc_content(), pagetype, reader.pages_in_doc(), urlbase + reader.doc_start_page().to_s]    # write doc
-    docs_written += 1
-    puts "Writing document type #{last_pagetype}. Start #{reader.doc_start_page}, pages #{reader.pages_in_doc}"
+    write_doc(f, reader, last_pagetype, urlbase)
   end
 
 end
 
-puts "Wrote #{docs_written} documents"
+puts "Wrote #{@docs_written} documents"

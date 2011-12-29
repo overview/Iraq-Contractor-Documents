@@ -1,3 +1,5 @@
 # don't include products of the repaginate-all script
 *.txt
 *.csv
+*.vec
+originals/
